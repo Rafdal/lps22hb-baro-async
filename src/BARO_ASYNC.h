@@ -44,15 +44,19 @@ public:
 
 	int begin();
 	int begin_default();
+	int begin_continuous();		// NOT TESTED
 
 	void reset_defaults();
 
 	inline void on_data_ready(void (*callback)(float))	{ _callback = callback;	}
 	inline void on_error(void (*callback)(uint8_t))	{ _on_error = callback;	}
 
-	void run(unsigned long ms = millis());
+	void dump_registers(Stream &stream);
 
-	void requestRead();
+	void run_continuous();		// NOT TESTED
+
+	void run(unsigned long ms = millis());	
+	void requestRead(unsigned long ms = millis());
 
 	float readPressureBlocking();
 	// float readTemperature(void);
@@ -62,6 +66,8 @@ public:
 private:
 	int i2cRead(uint8_t reg);
 	int i2cWrite(uint8_t reg, uint8_t val);
+
+	void prettyPrintBIN(Stream &stream, uint8_t val);
 
 private:
 	enum READ_STATE {

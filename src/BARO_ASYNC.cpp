@@ -40,7 +40,7 @@ int LPS22HB_Async::begin_default()
 {
 	_wire->begin();
 
-	if (i2cRead(LPS22HB_WHO_AM_I_REG) != 0xB1)
+	if (i2cRead(LPS22HB_WHO_AM_I_REG) != LPS22HB_WHO_AM_I_VAL)
 	{
 		_initialized = false;
 		return 0;
@@ -48,6 +48,41 @@ int LPS22HB_Async::begin_default()
 	reset_defaults();	// Reiniciar los registros
 	_initialized = true;
 	return 1;
+}
+
+int LPS22HB_Async::begin_continuous()
+{
+	uint8_t tmp;
+
+	if (!begin())
+		return 0;
+
+	/* Set Power mode */
+	tmp = i2cRead(LPS22HB_RES_CONF_REG);
+	tmp &= ~LPS22HB_LCEN_MASK;
+	tmp |= (uint8_t)0x00; 		// Disable low current mode (Low noise mode enabled)
+	i2cWrite(LPS22HB_RES_CONF_REG, tmp);
+
+	/* Control Register 1 */
+	tmp = i2cRead(LPS22HB_CTRL1_REG);
+	tmp &= ~LPS22HB_ODR_MASK;	
+	// tmp |= (uint8_t)0x30;	//  ODR = 25Hz
+	// tmp |= (uint8_t)0x40; 	//  ODR = 50Hz
+	tmp |= (uint8_t)0x50;		//	ODR = 75Hz
+	// https://www.st.com/resource/en/datasheet/lps22hb.pdf		Pagina 37
+	tmp &= ~LPS22HB_BDU_MASK;	//	Block Data Update
+	tmp |= ((uint8_t)0x02);		//	Activar BDU
+	tmp |= LPS22HB_LPFP_MASK;	//	Activar Low Pass
+	tmp |= LPS22HB_LPFP_CUTOFF_MASK;	//	Filtro = ODR/20  (comentar para ODR/9)
+	i2cWrite(LPS22HB_CTRL1_REG, tmp);
+
+	// 2. When I2C is used with BDU=1, the IF_ADD_INC bit has to be set to ‘0’ 
+	// in CTRL_REG2 (11h) and only a single-byte read of the output registers is allowed.
+	tmp = i2cRead(LPS22HB_CTRL2_REG);
+	tmp &= ~LPS22HB_ADD_INC_MASK;
+	tmp |= (uint8_t)0x00; /* Set IF_ADD_INC to 0 */
+
+	return 1; // Todo pelota papa
 }
 
 void LPS22HB_Async::reset_defaults()
@@ -59,6 +94,41 @@ void LPS22HB_Async::reset_defaults()
 	int tmp = i2cRead(LPS22HB_RES_CONF_REG);	// 9.14 	RES_CONF   (pagina 43)
 	tmp &= ~LPS22HB_LCEN_MASK;				
 	i2cWrite(LPS22HB_RES_CONF_REG, tmp);
+}
+
+void LPS22HB_Async::prettyPrintBIN(Stream &stream, uint8_t val)
+{
+	for (int i = 7; i >= 0; i--)
+	{
+		if (val & (1 << i))
+			stream.write((uint8_t)'1');
+		else
+			stream.write((uint8_t)'0');
+	}
+	stream.println();
+}
+
+void LPS22HB_Async::dump_registers(Stream &stream)
+{
+	stream.println(F("LPS22HB Registers:"));
+	stream.print(F("\tCTRL_REG1 = "));
+	prettyPrintBIN(stream, i2cRead(LPS22HB_CTRL1_REG));
+	stream.print(F("\tCTRL_REG2 = "));
+	prettyPrintBIN(stream, i2cRead(LPS22HB_CTRL2_REG));
+	stream.print(F("\tRES_CONF  = "));
+	prettyPrintBIN(stream, i2cRead(LPS22HB_RES_CONF_REG));
+}
+
+void LPS22HB_Async::run_continuous()
+{
+	if (!_initialized)
+		return;
+
+	float reading = (i2cRead(LPS22HB_PRESS_OUT_XL_REG) | (i2cRead(LPS22HB_PRESS_OUT_L_REG) << 8) |
+					(i2cRead(LPS22HB_PRESS_OUT_H_REG) << 16)) /
+					40960.0;
+	if (_callback != nullptr)
+		_callback(reading);
 }
 
 void LPS22HB_Async::run(unsigned long ms)
@@ -127,16 +197,16 @@ void LPS22HB_Async::run(unsigned long ms)
 }
 
 
-void LPS22HB_Async::requestRead()
+void LPS22HB_Async::requestRead(unsigned long ms)
 {
 	if (_initialized == true)
 	{
 		// trigger one shot
-		i2cWrite(LPS22HB_CTRL2_REG, 0x01);
+		i2cWrite(LPS22HB_CTRL2_REG, LPS22HB_ONE_SHOT_MASK);
 		waiting_for_data = true;
 		read_state = WAITING;
 		output = 0;
-		_request_timestamp = millis();
+		_request_timestamp = ms;
 	}
 }
 
