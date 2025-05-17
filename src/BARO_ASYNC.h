@@ -17,23 +17,10 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifdef __LPS22HB__H
-#error "SOLO INCLUYAN UN SENSOR BAROMETRICO"
-#endif
-
 #ifndef BARO_ASYNC_H
 #define BARO_ASYNC_H
 
 #define LPS22HB_ADDRESS 0x5C
-
-#define LPS22HB_WHO_AM_I_REG 0x0f
-#define LPS22HB_CTRL2_REG 0x11
-#define LPS22HB_STATUS_REG 0x27
-#define LPS22HB_PRESS_OUT_XL_REG 0x28
-#define LPS22HB_PRESS_OUT_L_REG 0x29
-#define LPS22HB_PRESS_OUT_H_REG 0x2a
-#define LPS22HB_TEMP_OUT_L_REG 0x2b
-#define LPS22HB_TEMP_OUT_H_REG 0x2c
 
 #ifdef _BARO_H_
 #error "NO USEN EL SENSOR DE PRESION POR DEFAULT DE ARDUINO. USEN BARO_FIX y LPS22HB_Async"
@@ -44,21 +31,27 @@
 
 #define LPS22HB_DATA_ASK_INTERVAL 14 // 10 ms
 
+enum {
+	BARO_ASYNC_ERROR_XL,
+	BARO_ASYNC_ERROR_L,
+	BARO_ASYNC_ERROR_H,
+};
+
 class LPS22HB_Async
 {
 public:
 	LPS22HB_Async(TwoWire &wire);
 
 	int begin();
+	int begin_default();
 
 	void reset_defaults();
 
-	inline void on_data_ready(void (*callback)(float))
-	{
-		_callback = callback;
-	}
+	inline void on_data_ready(void (*callback)(float))	{ _callback = callback;	}
+	inline void on_error(void (*callback)(uint8_t))	{ _on_error = callback;	}
 
 	void run(unsigned long ms = millis());
+	void run_state(unsigned long ms = millis());
 
 	void requestRead();
 
@@ -73,14 +66,25 @@ private:
 	int i2cWrite(uint8_t reg, uint8_t val);
 	void i2cWriteFast(uint8_t reg, uint8_t val);
 
-
+private:
+	enum READ_STATE {
+		WAITING,
+		READ_XL,
+		READ_L,
+		READ_H,
+	};
+	
 private:
 	TwoWire *_wire;
 	bool _initialized;
+	
+	void (*_on_error)(uint8_t) = nullptr;
+
 	void (*_callback)(float) = nullptr;
 	unsigned long _request_timestamp = 0;
 
 	uint8_t read_state = 0;
+	uint32_t output = 0;
 };
 
 extern LPS22HB_Async BARO_ASYNC;
