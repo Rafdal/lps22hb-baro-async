@@ -51,20 +51,17 @@ public:
 	inline void on_error(void (*callback)(uint8_t))	{ _on_error = callback;	}
 
 	void run(unsigned long ms = millis());
-	void run_state(unsigned long ms = millis());
 
 	void requestRead();
 
-	float readPressure();
+	float readPressureBlocking();
 	// float readTemperature(void);
 	
 	bool waiting_for_data = false;
 
 private:
 	int i2cRead(uint8_t reg);
-	int i2cReadFast(uint8_t reg);
 	int i2cWrite(uint8_t reg, uint8_t val);
-	void i2cWriteFast(uint8_t reg, uint8_t val);
 
 private:
 	enum READ_STATE {

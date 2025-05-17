@@ -3,7 +3,7 @@
 
 #define SPI_FREQ 4000000
 
-#include "BARO_ASYNC/BARO_ASYNC.h" //libreria para el sensor barometrico LPS22HB
+#include <BARO_ASYNC.h>
 
 void setup()
 {
@@ -14,11 +14,16 @@ void setup()
 
 	Serial.println("Setup completo");
 
-	Wire1.setClock(400000);
+	Wire1.setClock(400000);	// Set I2C clock to 400kHz
 	Wire1.begin();
 
-	if (!BARO_ASYNC.begin())
+	if (!BARO_ASYNC.begin_default())
 		Serial.println("Failed to initialize pressure sensor!");
+
+	BARO_ASYNC.on_error([](uint8_t error){
+		Serial.print("BARO_ASYNC Error: ");
+		Serial.println(error);
+	});
 
 	BARO_ASYNC.on_data_ready([](float p) {
 		Serial.print("P: ");
@@ -32,17 +37,10 @@ void loop()
 {
 	if (millis() - last_read_req > 1000)
 	{
-		gpio_tip_pa->write(1);
 		BARO_ASYNC.requestRead();
-		gpio_tip_pa->write(0);
 		last_read_req = millis();
 	}
 
-	if (BARO_ASYNC.waiting_for_data)
-	{
-		gpio_tip_pa->write(1);
-		BARO_ASYNC.run();
-		gpio_tip_pa->write(0);
-	}
+	BARO_ASYNC.run();
 }
 

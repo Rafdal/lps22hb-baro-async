@@ -45,7 +45,7 @@ int LPS22HB_Async::begin_default()
 		_initialized = false;
 		return 0;
 	}
-	reset_defaults();
+	reset_defaults();	// Reiniciar los registros
 	_initialized = true;
 	return 1;
 }
@@ -61,7 +61,7 @@ void LPS22HB_Async::reset_defaults()
 	i2cWrite(LPS22HB_RES_CONF_REG, tmp);
 }
 
-void LPS22HB_Async::run_state(unsigned long ms)
+void LPS22HB_Async::run(unsigned long ms)
 {
 	if (!_initialized || !waiting_for_data)
 		return;
@@ -126,39 +126,13 @@ void LPS22HB_Async::run_state(unsigned long ms)
 	}
 }
 
-void LPS22HB_Async::run(unsigned long ms)
-{
-	if (!_initialized || !waiting_for_data)
-		return;
-	
-	if (ms - _request_timestamp < LPS22HB_DATA_ASK_INTERVAL)
-		return;
-
-	// Serial.println("LPS22HB_Async::run");
-	if ((i2cRead(LPS22HB_CTRL2_REG) & 0x01) != 0)
-	{
-		return;
-	}
-	else
-	{
-		float reading = (i2cRead(LPS22HB_PRESS_OUT_XL_REG) | (i2cRead(LPS22HB_PRESS_OUT_L_REG) << 8) |
-						 (i2cRead(LPS22HB_PRESS_OUT_H_REG) << 16)) /
-						40960.0;
-		if (_callback != nullptr)
-		{
-			_callback(reading);
-		}
-		waiting_for_data = false;
-	}
-	// _last_read = ms;
-}
 
 void LPS22HB_Async::requestRead()
 {
 	if (_initialized == true)
 	{
 		// trigger one shot
-		i2cWriteFast(LPS22HB_CTRL2_REG, 0x01);
+		i2cWrite(LPS22HB_CTRL2_REG, 0x01);
 		waiting_for_data = true;
 		read_state = WAITING;
 		output = 0;
@@ -166,7 +140,7 @@ void LPS22HB_Async::requestRead()
 	}
 }
 
-float LPS22HB_Async::readPressure()
+float LPS22HB_Async::readPressureBlocking()
 {
 	if (_initialized == true)
 	{
@@ -182,19 +156,9 @@ float LPS22HB_Async::readPressure()
 		float reading = (i2cRead(LPS22HB_PRESS_OUT_XL_REG) | (i2cRead(LPS22HB_PRESS_OUT_L_REG) << 8) |
 						 (i2cRead(LPS22HB_PRESS_OUT_H_REG) << 16)) /
 						40960.0;
-
 		return reading;
 	}
 	return 0;
-}
-
-int LPS22HB_Async::i2cReadFast(uint8_t reg)
-{
-	_wire->beginTransmission(LPS22HB_ADDRESS);
-	_wire->write(reg);
-	_wire->endTransmission(false);
-	_wire->requestFrom(LPS22HB_ADDRESS, 1);
-	return _wire->read();
 }
 
 int LPS22HB_Async::i2cRead(uint8_t reg)
@@ -202,22 +166,10 @@ int LPS22HB_Async::i2cRead(uint8_t reg)
 	_wire->beginTransmission(LPS22HB_ADDRESS);
 	_wire->write(reg);
 	if (_wire->endTransmission(false) != 0)
-	{
 		return -1;
-	}
 	if (_wire->requestFrom(LPS22HB_ADDRESS, 1) != 1)
-	{
 		return -1;
-	}
 	return _wire->read();
-}
-
-void LPS22HB_Async::i2cWriteFast(uint8_t reg, uint8_t val)
-{
-	_wire->beginTransmission(LPS22HB_ADDRESS);
-	_wire->write(reg);
-	_wire->write(val);
-	_wire->endTransmission();
 }
 
 int LPS22HB_Async::i2cWrite(uint8_t reg, uint8_t val)
@@ -226,10 +178,7 @@ int LPS22HB_Async::i2cWrite(uint8_t reg, uint8_t val)
 	_wire->write(reg);
 	_wire->write(val);
 	if (_wire->endTransmission() != 0)
-	{
 		return 0;
-	}
-
 	return 1;
 }
 
