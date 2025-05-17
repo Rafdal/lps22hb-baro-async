@@ -29,7 +29,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#define LPS22HB_DATA_ASK_INTERVAL 14 // 10 ms
+#define LPS22HB_DATA_DELAY_ONE_SHOT 14
 
 enum {
 	BARO_ASYNC_ERROR_XL,
@@ -44,7 +44,7 @@ public:
 
 	int begin();
 	int begin_default();
-	int begin_continuous();		// NOT TESTED
+	int begin_continuous(unsigned long read_interval);
 
 	void reset_defaults();
 
@@ -53,15 +53,24 @@ public:
 
 	void dump_registers(Stream &stream);
 
-	void run_continuous();		// NOT TESTED
+	void run_continuous(unsigned long ms = millis());
 
+	// Run in ONE SHOT mode
 	void run(unsigned long ms = millis());	
+	// Request a read (one shot)
 	void requestRead(unsigned long ms = millis());
 
 	float readPressureBlocking();
 	// float readTemperature(void);
 	
 	bool waiting_for_data = false;
+
+	inline bool test_continuous_CPU_usage(unsigned long ms = millis())
+	{
+		if (ms - _continuous_read_timestamp < _continuous_read_interval)
+			return false;
+		return true;
+	}
 
 private:
 	int i2cRead(uint8_t reg);
@@ -71,7 +80,7 @@ private:
 
 private:
 	enum READ_STATE {
-		WAITING,
+		WAIT_ONE_SHOT,
 		READ_XL,
 		READ_L,
 		READ_H,
@@ -85,6 +94,9 @@ private:
 
 	void (*_callback)(float) = nullptr;
 	unsigned long _request_timestamp = 0;
+
+	unsigned long _continuous_read_interval = 0;
+	unsigned long _continuous_read_timestamp = 0;
 
 	uint8_t read_state = 0;
 	uint32_t output = 0;
