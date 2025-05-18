@@ -25,7 +25,7 @@ void setup()
 		Serial.println(error);
 	});
 
-	BARO_ASYNC.on_data_ready([](float p) {
+	BARO_ASYNC.on_pressure_data_ready([](float p) {
 		Serial.print("P: ");
 		Serial.println(p, 2);
 	});

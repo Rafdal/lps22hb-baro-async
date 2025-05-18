@@ -35,6 +35,8 @@ enum {
 	BARO_ASYNC_ERROR_XL,
 	BARO_ASYNC_ERROR_L,
 	BARO_ASYNC_ERROR_H,
+	BARO_ASYNC_ERROR_T_L,
+	BARO_ASYNC_ERROR_T_H,
 };
 
 class LPS22HB_Async
@@ -48,8 +50,10 @@ public:
 
 	void reset_defaults();
 
-	inline void on_data_ready(void (*callback)(float))	{ _callback = callback;	}
-	inline void on_error(void (*callback)(uint8_t))	{ _on_error = callback;	}
+	void on_pressure_data_ready(void (*callback)(float))	{ _callback_press = callback; }
+	void on_temp_data_ready(void (*callback)(float))		{ _callback_temp = callback; }
+	void on_error(void (*callback)(uint8_t))				{ _on_error = callback;	}
+
 
 	void dump_registers(Stream &stream);
 
@@ -60,8 +64,9 @@ public:
 	// Request a read (one shot)
 	void requestRead(unsigned long ms = millis());
 
+
 	float readPressureBlocking();
-	// float readTemperature(void);
+	float readTempBlocking();
 	
 	bool waiting_for_data = false;
 
@@ -81,9 +86,13 @@ private:
 private:
 	enum READ_STATE {
 		WAIT_ONE_SHOT,
-		READ_XL,
-		READ_L,
-		READ_H,
+		// Pressure
+		READ_P_XL,
+		READ_P_L,
+		READ_P_H,
+		// Temperature
+		READ_T_L,
+		READ_T_H,
 	};
 	
 private:
@@ -92,14 +101,20 @@ private:
 	
 	void (*_on_error)(uint8_t) = nullptr;
 
-	void (*_callback)(float) = nullptr;
 	unsigned long _request_timestamp = 0;
-
+	
+	// Continuous read mode
+	uint8_t read_state = 0;
 	unsigned long _continuous_read_interval = 0;
 	unsigned long _continuous_read_timestamp = 0;
-
-	uint8_t read_state = 0;
-	uint32_t output = 0;
+	
+	// Pressure
+	uint32_t out_press = 0;
+	void (*_callback_press)(float) = nullptr;
+	
+	// Temperature
+	uint16_t out_temp = 0;
+	void (*_callback_temp)(float) = nullptr;
 };
 
 extern LPS22HB_Async BARO_ASYNC;

@@ -62,7 +62,7 @@ int LPS22HB_Async::begin_continuous(unsigned long read_interval)
 	/* Set Power mode */
 	tmp = i2cRead(LPS22HB_RES_CONF_REG);
 	tmp &= ~LPS22HB_LCEN_MASK;
-	tmp |= (uint8_t)0x00; 		// Disable low current mode (Low noise mode enabled)
+	tmp |= (uint8_t)0x00; 		// Disable low-current mode (Low noise mode enabled)
 	i2cWrite(LPS22HB_RES_CONF_REG, tmp);
 
 	/* Control Register 1 */
@@ -74,8 +74,8 @@ int LPS22HB_Async::begin_continuous(unsigned long read_interval)
 	// https://www.st.com/resource/en/datasheet/lps22hb.pdf		Pagina 37
 	tmp &= ~LPS22HB_BDU_MASK;	//	Block Data Update
 	tmp |= ((uint8_t)0x02);		//	Activar BDU
-	tmp |= LPS22HB_LPFP_MASK;	//	Activar Low Pass
-	tmp |= LPS22HB_LPFP_CUTOFF_MASK;	//	Filtro = ODR/20  (comentar para ODR/9)
+	tmp |= LPS22HB_LPFP_MASK;	//	Activar Filtro Low Pass
+	tmp |= LPS22HB_LPFP_CUTOFF_MASK;	//	Bandwidth = ODR/20  (comentar para Fp = ODR/9)
 	i2cWrite(LPS22HB_CTRL1_REG, tmp);
 
 	// 2. When I2C is used with BDU=1, the IF_ADD_INC bit has to be set to ‘0’ 
@@ -130,49 +130,76 @@ void LPS22HB_Async::run_continuous(unsigned long ms)
 		return;
 
 	if (read_state == WAIT_ONE_SHOT)
-		read_state = READ_XL;
+		read_state = READ_P_XL;
 
 	int read = 0;
 	switch (read_state)
 	{
-		case READ_XL:
+		case READ_P_XL:
 			read = i2cRead(LPS22HB_PRESS_OUT_XL_REG);
 			if (read < 0)
 			{
 				if (_on_error != nullptr)
 					_on_error(BARO_ASYNC_ERROR_XL);
-				read_state = READ_XL;
+				read_state = READ_P_XL;
 				return;
 			}
-			output = read;
-			read_state = READ_L;
+			out_press = read;
+			read_state = READ_P_L;
 			break;
-		case READ_L:
+		case READ_P_L:
 			read = i2cRead(LPS22HB_PRESS_OUT_L_REG);
 			if (read < 0)
 			{
 				if (_on_error != nullptr)
 					_on_error(BARO_ASYNC_ERROR_L);
-				read_state = READ_XL;
+				read_state = READ_P_XL;
 				return;
 			}
-			output |= (read << 8);
-			read_state = READ_H;
+			out_press |= (read << 8);
+			read_state = READ_P_H;
 			break;
-		case READ_H:
+		case READ_P_H:
 			read = i2cRead(LPS22HB_PRESS_OUT_H_REG);
 			if (read < 0)
 			{
 				if (_on_error != nullptr)
 					_on_error(BARO_ASYNC_ERROR_H);
-				read_state = READ_XL;
+				read_state = READ_P_XL;
 				return;
 			}
-			output |= (read << 16);
-			read_state = READ_XL;	// continuous mode
+			out_press |= (read << 16);
+			if (_callback_press != nullptr)
+				_callback_press((float)out_press / 40960.0f);
+			read_state = READ_T_L;
+			break;
+		case READ_T_L:
+			read = i2cRead(LPS22HB_TEMP_OUT_L_REG);
+			if (read < 0)
+			{
+				if (_on_error != nullptr)
+					_on_error(BARO_ASYNC_ERROR_T_L);
+				read_state = READ_P_XL;
+				return;
+			}
+			out_temp = read;
+			read_state = READ_T_H;
+			break;
+		case READ_T_H:
+			read = i2cRead(LPS22HB_TEMP_OUT_H_REG);
+			if (read < 0)
+			{
+				if (_on_error != nullptr)
+					_on_error(BARO_ASYNC_ERROR_T_H);
+				read_state = READ_P_XL;
+				return;
+			}
+			out_temp |= (read << 8);
+			if (_callback_temp != nullptr)
+				_callback_temp((float)out_temp / 100.0f);
+
 			_continuous_read_timestamp = ms;
-			if (_callback != nullptr)
-				_callback((float)output / 40960.0f);
+			read_state = READ_P_XL;	// continuous mode
 			break;
 		default:
 			break;
@@ -197,10 +224,10 @@ void LPS22HB_Async::run(unsigned long ms)
 		}
 		else
 		{
-			read_state = READ_XL;
+			read_state = READ_P_XL;
 		}
 		break;
-	case READ_XL:
+	case READ_P_XL:
 		read = i2cRead(LPS22HB_PRESS_OUT_XL_REG);
 		if (read < 0)
 		{
@@ -209,10 +236,10 @@ void LPS22HB_Async::run(unsigned long ms)
 			waiting_for_data = false;
 			return;
 		}
-		output = read;
-		read_state = READ_L;
+		out_press = read;
+		read_state = READ_P_L;
 		break;
-	case READ_L:
+	case READ_P_L:
 		read = i2cRead(LPS22HB_PRESS_OUT_L_REG);
 		if (read < 0)
 		{
@@ -221,10 +248,10 @@ void LPS22HB_Async::run(unsigned long ms)
 			waiting_for_data = false;
 			return;
 		}
-		output |= (read << 8);
-		read_state = READ_H;
+		out_press |= (read << 8);
+		read_state = READ_P_H;
 		break;
-	case READ_H:
+	case READ_P_H:
 		read = i2cRead(LPS22HB_PRESS_OUT_H_REG);
 		if (read < 0)
 		{
@@ -233,10 +260,10 @@ void LPS22HB_Async::run(unsigned long ms)
 			waiting_for_data = false;
 			return;
 		}
-		output |= (read << 16);
+		out_press |= (read << 16);
 		read_state = WAIT_ONE_SHOT;
-		if (_callback != nullptr)
-			_callback((float)output / 40960.0f);
+		if (_callback_press != nullptr)
+			_callback_press((float)out_press / 40960.0f);
 		waiting_for_data = false;
 		break;
 	default:
@@ -253,9 +280,30 @@ void LPS22HB_Async::requestRead(unsigned long ms)
 		i2cWrite(LPS22HB_CTRL2_REG, LPS22HB_ONE_SHOT_MASK);
 		waiting_for_data = true;
 		read_state = WAIT_ONE_SHOT;
-		output = 0;
+		out_press = 0;
 		_request_timestamp = ms;
 	}
+}
+
+float LPS22HB_Async::readTempBlocking()
+{
+	int16_t raw_data;
+	uint8_t buffer[2];
+	uint16_t tmp;
+	uint8_t i;
+
+	for (i = 0; i < 2; i++)
+	{
+		// buffer[i] = SENSOR_IO_Read(DeviceAddr, (LPS22HB_TEMP_OUT_L_REG + i));
+		buffer[i] = i2cRead(LPS22HB_TEMP_OUT_L_REG + i);
+	}
+
+	/* Build the raw tmp */
+	tmp = (((uint16_t)buffer[1]) << 8) + (uint16_t)buffer[0];
+
+	raw_data = (int16_t)tmp;
+
+	return ((float)(raw_data / 100.0f));
 }
 
 float LPS22HB_Async::readPressureBlocking()

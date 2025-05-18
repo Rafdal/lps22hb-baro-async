@@ -300,7 +300,7 @@
   *         TOUT15 - TOUT8: temperature data MSB.
   *         Tout(degC)=TEMP_OUT/100
   */
-#define LPS22HBH_TEMP_OUT_H_REG         (uint8_t)0x2C
+#define LPS22HB_TEMP_OUT_H_REG         (uint8_t)0x2C
 
 /**
   * @brief Threshold pressure (LSB) register.
