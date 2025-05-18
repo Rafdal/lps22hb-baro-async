@@ -30,6 +30,7 @@
 #include <Wire.h>
 
 #define LPS22HB_DATA_DELAY_ONE_SHOT 14
+#define LPS22HB_LPF_STABILIZE_TIME 500	// Low Pass Filter Stabilization Time
 
 enum {
 	BARO_ASYNC_ERROR_XL,
@@ -77,6 +78,12 @@ public:
 		return true;
 	}
 
+	// https://www.digikey.pt/en/maker/projects/clue-altimeter/f84c98b83b3741c5b473c64e8e2774cb
+	inline float kpaToMeters(float kpa, float kpa_at_sea_level = 101.325f)
+	{
+		return (1.0f - powf(kpa / kpa_at_sea_level, 0.190284f)) * 44307.69396f;
+	}
+
 private:
 	int i2cRead(uint8_t reg);
 	int i2cWrite(uint8_t reg, uint8_t val);
@@ -98,10 +105,13 @@ private:
 private:
 	TwoWire *_wire;
 	bool _initialized;
+	unsigned long _init_timestamp = 0;
 	
 	void (*_on_error)(uint8_t) = nullptr;
 
 	unsigned long _request_timestamp = 0;
+
+	bool _lpf_stabilized = false;
 	
 	// Continuous read mode
 	uint8_t read_state = 0;

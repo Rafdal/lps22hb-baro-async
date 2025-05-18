@@ -77,12 +77,15 @@ int LPS22HB_Async::begin_continuous(unsigned long read_interval)
 	tmp |= LPS22HB_LPFP_MASK;	//	Activar Filtro Low Pass
 	tmp |= LPS22HB_LPFP_CUTOFF_MASK;	//	Bandwidth = ODR/20  (comentar para Fp = ODR/9)
 	i2cWrite(LPS22HB_CTRL1_REG, tmp);
+	_lpf_stabilized = false;
+	_init_timestamp = millis();
 
 	// 2. When I2C is used with BDU=1, the IF_ADD_INC bit has to be set to ‘0’ 
 	// in CTRL_REG2 (11h) and only a single-byte read of the output registers is allowed.
 	tmp = i2cRead(LPS22HB_CTRL2_REG);
 	tmp &= ~LPS22HB_ADD_INC_MASK;
 	tmp |= (uint8_t)0x00; /* Set IF_ADD_INC to 0 */
+	i2cWrite(LPS22HB_CTRL2_REG, tmp);
 
 	return 1; // Todo pelota papa
 }
@@ -128,6 +131,13 @@ void LPS22HB_Async::run_continuous(unsigned long ms)
 
 	if (ms - _continuous_read_timestamp < _continuous_read_interval)
 		return;
+
+	if (!_lpf_stabilized)
+	{
+		if (ms - _init_timestamp < LPS22HB_LPF_STABILIZE_TIME)
+			return;
+		_lpf_stabilized = true;
+	}
 
 	if (read_state == WAIT_ONE_SHOT)
 		read_state = READ_P_XL;
