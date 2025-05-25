@@ -36,8 +36,14 @@ enum {
 	BARO_ASYNC_ERROR_XL,
 	BARO_ASYNC_ERROR_L,
 	BARO_ASYNC_ERROR_H,
+	BARO_ASYNC_ERROR_NULL_XL,
+	BARO_ASYNC_ERROR_NULL_L,
+	BARO_ASYNC_ERROR_NULL_H,
 	BARO_ASYNC_ERROR_T_L,
 	BARO_ASYNC_ERROR_T_H,
+	BARO_ASYNC_ERROR_I2C_READ_END,
+	BARO_ASYNC_ERROR_I2C_READ_REQ,
+	BARO_ASYNC_ERROR_BEGIN_WHO_AM_I,
 };
 
 class LPS22HB_Async
@@ -49,6 +55,9 @@ public:
 	int begin_default();
 	int begin_continuous(unsigned long read_interval);
 
+	bool reboot_memory();
+	bool software_reset();
+
 	void reset_defaults();
 
 	void on_pressure_data_ready(void (*callback)(float))	{ _callback_press = callback; }
@@ -57,6 +66,7 @@ public:
 
 
 	void dump_registers(Stream &stream);
+	void dump_registers(char *buf);
 
 	void run_continuous(unsigned long ms = millis());
 
@@ -89,6 +99,7 @@ private:
 	int i2cWrite(uint8_t reg, uint8_t val);
 
 	void prettyPrintBIN(Stream &stream, uint8_t val);
+	char* prettyPrintBIN(char* pbuf, uint8_t val);
 
 private:
 	enum READ_STATE {

@@ -27,9 +27,15 @@ LPS22HB_Async::LPS22HB_Async(TwoWire &wire) : _wire(&wire), _initialized(false) 
 int LPS22HB_Async::begin()
 {
     _wire->begin();
-    if (i2cRead(LPS22HB_WHO_AM_I_REG) != LPS22HB_WHO_AM_I_VAL)
+    uint8_t whoami = i2cRead(LPS22HB_WHO_AM_I_REG);
+    if (whoami != LPS22HB_WHO_AM_I_VAL)
     {
         _initialized = false;
+        if (_on_error)
+        {
+            _on_error(BARO_ASYNC_ERROR_BEGIN_WHO_AM_I);
+            _on_error(whoami);
+        }
         return 0;
     }
     _initialized = true;
@@ -90,6 +96,30 @@ int LPS22HB_Async::begin_continuous(unsigned long read_interval)
     return 1; // Todo pelota papa
 }
 
+bool LPS22HB_Async::reboot_memory()
+{
+    // Reiniciar la memoria
+    // Basado en el datasheet https://www.st.com/resource/en/datasheet/lps22hb.pdf
+    int tmp = i2cRead(LPS22HB_CTRL2_REG);
+    if (tmp < 0)
+        return false;
+    tmp |= 0x1 << LPS22HB_BOOT_BIT;	// Reiniciar la memoria
+    i2cWrite(LPS22HB_CTRL2_REG, tmp);
+    return true;
+}
+
+bool LPS22HB_Async::software_reset()
+{
+    // Reiniciar el dispositivo
+    // Basado en el datasheet https://www.st.com/resource/en/datasheet/lps22hb.pdf
+    int tmp = i2cRead(LPS22HB_CTRL2_REG);
+    if (tmp < 0)
+        return false;
+    tmp |= 0x1 << LPS22HB_SW_RESET_BIT;	// Reiniciar el dispositivo
+    i2cWrite(LPS22HB_CTRL2_REG, tmp);
+    return true;
+}
+
 void LPS22HB_Async::reset_defaults()
 {
     // Reiniciar los registros
@@ -99,6 +129,19 @@ void LPS22HB_Async::reset_defaults()
     int tmp = i2cRead(LPS22HB_RES_CONF_REG);	// 9.14 	RES_CONF   (pagina 43)
     tmp &= ~LPS22HB_LCEN_MASK;				
     i2cWrite(LPS22HB_RES_CONF_REG, tmp);
+}
+
+char* LPS22HB_Async::prettyPrintBIN(char* pbuf, uint8_t val)
+{
+    for (int i = 7; i >= 0; i--)
+    {
+        if (val & (1 << i))
+            pbuf[i] = '1';
+        else
+            pbuf[i] = '0';
+    }
+    pbuf[8] = '\0';
+    return pbuf + 8;
 }
 
 void LPS22HB_Async::prettyPrintBIN(Stream &stream, uint8_t val)
@@ -111,6 +154,41 @@ void LPS22HB_Async::prettyPrintBIN(Stream &stream, uint8_t val)
             stream.write((uint8_t)'0');
     }
     stream.println();
+}
+
+void LPS22HB_Async::dump_registers(char *buf)
+{
+    buf[0] = '\0';
+    strcat(buf, "\nLPS22HB Regs:\n");
+    strcat(buf, "\tINTERRUPT_CFG = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_INTERRUPT_CFG_REG));
+    strcat(buf, "\tCTRL_REG1     = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_CTRL1_REG));
+    strcat(buf, "\tCTRL_REG2     = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_CTRL2_REG));
+    strcat(buf, "\tCTRL_REG3     = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_CTRL3_REG));
+    strcat(buf, "\tFIFO_CTRL     = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_CTRL_FIFO_REG));
+    strcat(buf, "\tREF_P_XL      = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_REF_P_XL_REG));
+    strcat(buf, "\tREF_P_L       = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_REF_P_L_REG));
+    strcat(buf, "\tREF_P_H       = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_REF_P_H_REG));
+    strcat(buf, "\tRPDS_L        = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_RPDS_L_REG));
+    strcat(buf, "\tRPDS_H        = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_RPDS_H_REG));
+    strcat(buf, "\tRES_CONF      = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_RES_CONF_REG));
+    strcat(buf, "\tINT_SOURCE    = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_INTERRUPT_SOURCE_REG));
+    strcat(buf, "\tFIFO_STATUS   = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(0x25));
+    strcat(buf, "\tSTATUS        = ");
+    prettyPrintBIN(buf + strlen(buf), i2cRead(LPS22HB_STATUS_REG));
+    strcat(buf, "\n");
 }
 
 void LPS22HB_Async::dump_registers(Stream &stream)
@@ -176,6 +254,11 @@ void LPS22HB_Async::run_continuous(unsigned long ms)
                 read_state = READ_P_XL;
                 return;
             }
+            else if (read == 0)
+            {
+                if (_on_error != nullptr)
+                    _on_error(BARO_ASYNC_ERROR_NULL_XL);
+            }
             out_press = read;
             read_state = READ_P_L;
             break;
@@ -188,6 +271,11 @@ void LPS22HB_Async::run_continuous(unsigned long ms)
                 read_state = READ_P_XL;
                 return;
             }
+            else if (read == 0)
+            {
+                if (_on_error != nullptr)
+                    _on_error(BARO_ASYNC_ERROR_NULL_L);
+            }
             out_press |= (read << 8);
             read_state = READ_P_H;
             break;
@@ -199,6 +287,11 @@ void LPS22HB_Async::run_continuous(unsigned long ms)
                     _on_error(BARO_ASYNC_ERROR_H);
                 read_state = READ_P_XL;
                 return;
+            }
+            else if (read == 0)
+            {
+                if (_on_error != nullptr)
+                    _on_error(BARO_ASYNC_ERROR_NULL_H);
             }
             out_press |= (read << 16);
             if (_callback_press != nullptr)
@@ -364,9 +457,17 @@ int LPS22HB_Async::i2cRead(uint8_t reg)
     _wire->beginTransmission(LPS22HB_ADDRESS);
     _wire->write(reg);
     if (_wire->endTransmission(false) != 0)
+    {
+        if (_on_error != nullptr)
+            _on_error(BARO_ASYNC_ERROR_I2C_READ_END);
         return -1;
+    }
     if (_wire->requestFrom(LPS22HB_ADDRESS, 1) != 1)
+    {
+        if (_on_error != nullptr)
+            _on_error(BARO_ASYNC_ERROR_I2C_READ_REQ);
         return -1;
+    }
     return _wire->read();
 }
 
